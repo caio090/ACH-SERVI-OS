@@ -33,7 +33,7 @@ export function NewRequestForm({ categories }: { categories: CategoryRow[] }) {
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4" encType="multipart/form-data">
+    <form action={formAction} className="flex flex-col gap-4">
       {state.error && <Alert tone="error">{state.error}</Alert>}
 
       <SelectField id="category_id" name="category_id" label="Categoria" required defaultValue="">
