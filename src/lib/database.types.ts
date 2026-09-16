@@ -334,6 +334,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      is_own_professional_profile: {
+        Args: { target_professional_id: string };
+        Returns: boolean;
+      };
     };
     Enums: {
       user_role: UserRole;
