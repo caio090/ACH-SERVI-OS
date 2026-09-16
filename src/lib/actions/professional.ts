@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isValidProfessionalAppointmentTransition } from "@/lib/appointmentTransitions";
 
 export interface ProfessionalProfileState {
   error?: string;
@@ -113,6 +114,8 @@ export async function respondToMatch(params: {
   revalidatePath(`/pedidos/${params.requestId}`);
 }
 
+// O cliente só pode cancelar e não usa esta action pela UI atual — ver
+// AppointmentActions.tsx (exclusiva do profissional).
 export async function updateAppointmentStatus(params: {
   appointmentId: string;
   requestId: string;
@@ -124,11 +127,26 @@ export async function updateAppointmentStatus(params: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("not_authenticated");
 
+  const { data: appointment } = await supabase
+    .from("appointments")
+    .select("status, professional_id")
+    .eq("id", params.appointmentId)
+    .maybeSingle();
+
+  if (!appointment) {
+    throw new Error("Atendimento não encontrado.");
+  }
+  if (appointment.professional_id !== user.id) {
+    throw new Error("Apenas o profissional responsável pode atualizar este atendimento.");
+  }
+  if (!isValidProfessionalAppointmentTransition(appointment.status, params.status)) {
+    throw new Error("Essa transição de status não é permitida para o atendimento atual.");
+  }
+
   const { error } = await supabase
     .from("appointments")
     .update({ status: params.status })
-    .eq("id", params.appointmentId)
-    .or(`client_id.eq.${user.id},professional_id.eq.${user.id}`);
+    .eq("id", params.appointmentId);
 
   if (error) {
     throw new Error("Não foi possível atualizar o atendimento.");

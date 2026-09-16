@@ -32,12 +32,12 @@ export function AppointmentActions({
           Marcar em atendimento
         </Button>
       )}
-      {(status === "scheduled" || status === "in_service") && (
+      {status === "in_service" && (
         <Button size="sm" isLoading={isPending} onClick={() => update("completed")}>
           Concluir atendimento
         </Button>
       )}
-      {status === "scheduled" && (
+      {(status === "scheduled" || status === "in_service") && (
         <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-50" isLoading={isPending} onClick={() => update("cancelled")}>
           Cancelar
         </Button>
