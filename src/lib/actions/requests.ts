@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchProfessionals, type MatchCandidateInput } from "@/lib/matching";
+import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -12,19 +13,29 @@ const MAX_MATCHES_PER_REQUEST = 20;
 export interface CreateRequestState {
   error?: string;
   requestId?: string;
+  authRequired?: boolean;
+  environmentBlocked?: boolean;
 }
 
 export async function createServiceRequest(
   _prevState: CreateRequestState,
   formData: FormData,
 ): Promise<CreateRequestState> {
+  if (!hasPublicSupabaseConfig()) {
+    return {
+      environmentBlocked: true,
+      error:
+        "A criação está bloqueada neste ambiente: configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { error: "Você precisa entrar para criar um pedido." };
+    return { authRequired: true, error: "Você precisa entrar para criar um pedido." };
   }
 
   const categoryId = String(formData.get("category_id") || "");
@@ -40,8 +51,30 @@ export async function createServiceRequest(
     return { error: "Preencha todos os campos obrigatórios." };
   }
 
+  if (description.length < 15 || description.length > 600) {
+    return { error: "A descrição deve ter entre 15 e 600 caracteres." };
+  }
+
+  const today = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
+  if (desiredDate < today) {
+    return { error: "A data do serviço não pode estar no passado." };
+  }
+
   if (timeWindowEnd <= timeWindowStart) {
     return { error: "O horário final deve ser depois do horário inicial." };
+  }
+
+  const { data: category } = await supabase
+    .from("categories")
+    .select("id")
+    .eq("id", categoryId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!category) {
+    return { error: "Escolha uma categoria de serviço válida." };
   }
 
   const { data: request, error: insertError } = await supabase
@@ -89,14 +122,20 @@ export async function createServiceRequest(
     await supabase.from("service_requests").update({ photo_paths: photoPaths }).eq("id", request.id);
   }
 
-  await runMatchingForRequest({
-    requestId: request.id,
-    categoryId,
-    neighborhood,
-    desiredDate,
-    timeWindowStart,
-    timeWindowEnd,
-  });
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await runMatchingForRequest({
+        requestId: request.id,
+        categoryId,
+        neighborhood,
+        desiredDate,
+        timeWindowStart,
+        timeWindowEnd,
+      });
+    } catch (error) {
+      console.error("Matching inicial não executado:", error);
+    }
+  }
 
   revalidatePath("/pedidos");
   return { requestId: request.id };

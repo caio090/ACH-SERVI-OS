@@ -7,7 +7,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 const items: Array<{ href: string; label: string; icon: IconName; primary?: boolean }> = [
   { href: "/", label: "Início", icon: "home" },
   { href: "/buscar", label: "Buscar", icon: "search" },
-  { href: "/pedidos/novo", label: "Pedir", icon: "plus", primary: true },
+  { href: "/pedir", label: "Pedir", icon: "plus", primary: true },
   { href: "/pedidos", label: "Pedidos", icon: "clipboard" },
   { href: "/entrar", label: "Perfil", icon: "user" },
 ];

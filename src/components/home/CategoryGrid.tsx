@@ -26,7 +26,7 @@ export function CategoryGrid({
   unavailable?: boolean;
   hasError?: boolean;
 }) {
-  if (unavailable || hasError) {
+  if ((unavailable && (!categories || categories.length === 0)) || hasError) {
     return (
       <div className="space-y-3">
         <div className="scrollbar-none -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0">
@@ -66,7 +66,7 @@ export function CategoryGrid({
         {visibleCategories.map((category) => (
           <Link
             key={category.id}
-            href={`/buscar?categoria=${category.slug}`}
+            href={`/pedir?categoria=${category.slug}`}
             className="group flex min-h-20 w-[8.5rem] shrink-0 flex-col items-start justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 transition-colors hover:border-action-300 hover:bg-action-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-500 focus-visible:ring-offset-2 sm:min-h-16 sm:w-auto sm:flex-row sm:items-center sm:justify-start sm:gap-3"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-action-50 text-action-700 transition-colors group-hover:bg-white">
@@ -78,6 +78,11 @@ export function CategoryGrid({
           </Link>
         ))}
       </div>
+      {unavailable && (
+        <p className="mt-2 text-xs text-neutral-500" role="status">
+          Categorias demonstrativas para visualização local.
+        </p>
+      )}
     </>
   );
 }

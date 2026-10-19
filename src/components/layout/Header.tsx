@@ -32,7 +32,7 @@ export async function Header() {
         </Link>
 
         <Link
-          href="/buscar"
+          href="/pedir"
           className="ml-1 flex min-w-0 max-w-[9.5rem] items-center gap-1.5 rounded-lg px-1.5 py-2 text-neutral-600 hover:bg-neutral-100 sm:max-w-[13rem] md:order-3 md:ml-auto"
           aria-label={`Localização: ${location}`}
         >
@@ -44,11 +44,11 @@ export async function Header() {
           <Link href="/" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
             Início
           </Link>
-          <Link href="/buscar" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
+          <Link href="/pedir" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
             Buscar
           </Link>
           <Link
-            href="/pedidos/novo"
+            href="/pedir"
             className="rounded-lg px-3 py-2 text-action-700 hover:bg-action-50"
           >
             Pedir serviço

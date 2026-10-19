@@ -19,10 +19,23 @@ import {
 } from "@/lib/constants";
 import { CancelButton } from "./CancelButton";
 import { ConfirmMatchForm } from "./ConfirmMatchForm";
+import { RequestTimeline } from "@/components/requests/RequestTimeline";
+import { Alert } from "@/components/ui/Alert";
+import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
 
 type MatchWithProfessional = RequestMatchRow & { professional: PublicProfessionalProfileRow | undefined };
 
 export default async function RequestDetailPage({ params }: { params: { id: string } }) {
+  if (!hasPublicSupabaseConfig()) {
+    return (
+      <div className="mx-auto max-w-2xl py-6">
+        <Alert tone="error">
+          Este pedido não pode ser carregado neste ambiente porque as variáveis públicas do Supabase não estão configuradas.
+        </Alert>
+      </div>
+    );
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -126,6 +139,8 @@ export default async function RequestDetailPage({ params }: { params: { id: stri
           {request.is_urgent && <p className="font-medium text-brand-600">⚡ Urgente</p>}
         </div>
       </Card>
+
+      <RequestTimeline status={request.status} />
 
       {appointment && (
         <Card className="flex flex-col gap-2 border-green-200 bg-green-50">

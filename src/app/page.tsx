@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/config";
 import type { CategoryRow, ServiceRequestRow } from "@/lib/database.types";
 import { SERVICE_REQUEST_STATUS_LABELS } from "@/lib/constants";
+import { PREVIEW_REQUEST_CATEGORIES } from "@/lib/request-flow";
 
 type HomeRequest = Pick<ServiceRequestRow, "id" | "description" | "status"> & {
   categories: Pick<CategoryRow, "name" | "slug"> | null;
@@ -19,7 +20,7 @@ async function loadHomeData() {
     assertSupabaseConfigOutsideVisualPreview();
 
     return {
-      categories: null,
+      categories: PREVIEW_REQUEST_CATEGORIES,
       categoryError: false,
       requests: null,
       isVisualPreview: allowMissingSupabaseForVisualPreview(),
@@ -76,7 +77,7 @@ export default async function HomePage() {
           </h1>
         </div>
 
-        <form action="/buscar" className="relative flex items-center" role="search">
+        <form action="/pedir" className="relative flex items-center" role="search">
           <Icon
             name="search"
             className="pointer-events-none absolute left-4 h-5 w-5 text-neutral-400"
@@ -108,7 +109,7 @@ export default async function HomePage() {
               <p className="mt-0.5 text-sm text-neutral-500">Encontre o serviço certo mais rápido.</p>
             </div>
             <Link
-              href="/buscar"
+              href="/pedir"
               className="inline-flex min-h-11 shrink-0 items-center gap-0.5 text-sm font-semibold text-action-700 hover:text-action-800"
             >
               Ver todos
@@ -138,7 +139,7 @@ export default async function HomePage() {
                 Conte o que aconteceu e encontre profissionais disponíveis.
               </p>
               <Link
-                href="/pedidos/novo"
+                href="/pedir"
                 className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-action-800 transition-colors hover:bg-action-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-action-700"
               >
                 Pedir serviço
@@ -194,7 +195,7 @@ export default async function HomePage() {
                   Faça seu primeiro pedido e acompanhe tudo por aqui.
                 </p>
                 <Link
-                  href="/pedidos/novo"
+                  href="/pedir"
                   className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-action-200 px-4 py-2.5 text-sm font-bold text-action-700 transition-colors hover:bg-action-50"
                 >
                   Fazer primeiro pedido
