@@ -73,6 +73,10 @@ Acesse [http://localhost:3000](http://localhost:3000).
 | `npm run start` | Sobe o build de produção |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Checagem de tipos TypeScript |
+| `npm test` | Unitários + testes de banco (Postgres local em WASM com todas as migrations e RLS) |
+| `npm run e2e:supabase` | Fluxo completo contra o projeto Supabase real (exige `.env.local` e `E2E_CONFIRM=sim`) |
+
+Detalhes do sprint de hardening, migrations pendentes de aplicação e como validar: [`docs/SPRINT_HARDENING_BETA.md`](./docs/SPRINT_HARDENING_BETA.md).
 
 ## Estrutura
 
