@@ -6,6 +6,7 @@ import { isValidProfessionalAppointmentTransition } from "@/lib/appointmentTrans
 import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
 import { buildImageObjectPath, getUploadedFiles, validateImageFile } from "@/lib/uploads";
 import { checkRateLimit } from "@/lib/rateLimit.server";
+import { trackServerEvent } from "@/lib/analytics.server";
 
 export interface ProfessionalProfileState {
   error?: string;
@@ -113,6 +114,14 @@ export async function respondToMatch(params: {
     throw new Error("Não foi possível responder ao pedido.");
   }
 
+  if (params.action !== "decline") {
+    await trackServerEvent("professional_accepted", {
+      userId: user.id,
+      requestId: params.requestId,
+      metadata: { response: params.action },
+    });
+  }
+
   revalidatePath("/pro/painel");
   revalidatePath(`/pedidos/${params.requestId}`);
 }
@@ -153,6 +162,13 @@ export async function updateAppointmentStatus(params: {
 
   if (error) {
     throw new Error("Não foi possível atualizar o atendimento.");
+  }
+
+  if (params.status === "in_service" || params.status === "completed") {
+    await trackServerEvent(params.status === "in_service" ? "service_started" : "service_completed", {
+      userId: user.id,
+      requestId: params.requestId,
+    });
   }
 
   revalidatePath("/pro/painel");

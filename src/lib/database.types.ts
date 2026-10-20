@@ -203,6 +203,15 @@ export type AdminActionLogRow = Timestamps & {
   metadata: Record<string, unknown>;
 };
 
+export type ProductEventRow = Timestamps & {
+  id: number;
+  event_name: string;
+  user_id: string | null;
+  anonymous_id: string | null;
+  request_id: string | null;
+  metadata: Record<string, unknown>;
+};
+
 export type PublicProfessionalProfileRow = {
   id: string;
   full_name: string;
@@ -316,6 +325,11 @@ export type Database = {
           Partial<Pick<AdminActionLogRow, "metadata">>,
         Partial<Omit<AdminActionLogRow, "id" | "created_at">>
       >;
+      product_events: TableDef<
+        ProductEventRow,
+        Pick<ProductEventRow, "event_name"> & Partial<Omit<ProductEventRow, "id" | "created_at" | "event_name">>,
+        Record<string, never>
+      >;
     };
     Views: {
       public_professional_profiles: {
@@ -339,6 +353,10 @@ export type Database = {
       is_own_professional_profile: {
         Args: { target_professional_id: string };
         Returns: boolean;
+      };
+      admin_product_funnel: {
+        Args: { p_since: string };
+        Returns: { event_name: string; actors: number; events: number }[];
       };
       consume_rate_limit: {
         Args: { p_key: string; p_limit: number; p_window_seconds: number };

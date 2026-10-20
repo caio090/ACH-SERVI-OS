@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CategoryGrid } from "@/components/home/CategoryGrid";
+import { TrackEvent } from "@/components/analytics/TrackEvent";
 import { Icon } from "@/components/ui/Icon";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -66,6 +67,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 pb-2 md:gap-8 md:pt-3">
+      <TrackEvent event="home_view" />
       <section aria-labelledby="home-heading" className="space-y-4 md:max-w-3xl">
         <div>
           <p className="text-sm font-semibold text-action-700">Olá!</p>

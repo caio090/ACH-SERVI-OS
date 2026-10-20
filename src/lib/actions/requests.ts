@@ -8,6 +8,7 @@ import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
 import { buildImageObjectPath, getUploadedFiles, IMAGE_UPLOAD_RULES, validateImageFile } from "@/lib/uploads";
 import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
 import { checkRateLimit } from "@/lib/rateLimit.server";
+import { trackServerEvent } from "@/lib/analytics.server";
 
 const MAX_MATCHES_PER_REQUEST = 20;
 
@@ -75,7 +76,7 @@ export async function createServiceRequest(
 
   const { data: category } = await supabase
     .from("categories")
-    .select("id")
+    .select("id, slug")
     .eq("id", categoryId)
     .eq("is_active", true)
     .maybeSingle();
@@ -134,9 +135,15 @@ export async function createServiceRequest(
     await supabase.from("service_requests").update({ photo_paths: photoPaths }).eq("id", request.id);
   }
 
+  await trackServerEvent("request_submitted", {
+    userId: user.id,
+    requestId: request.id,
+    metadata: { category_slug: category.slug, photo_count: photoPaths.length, is_urgent: isUrgent },
+  });
+
   if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      await runMatchingForRequest({
+      const matchCount = await runMatchingForRequest({
         requestId: request.id,
         categoryId,
         neighborhood,
@@ -144,6 +151,13 @@ export async function createServiceRequest(
         timeWindowStart,
         timeWindowEnd,
       });
+      if (matchCount > 0) {
+        await trackServerEvent("professional_matched", {
+          userId: user.id,
+          requestId: request.id,
+          metadata: { match_count: matchCount },
+        });
+      }
     } catch (error) {
       console.error("Matching inicial não executado:", error);
     }
@@ -173,7 +187,7 @@ async function runMatchingForRequest(params: {
   desiredDate: string;
   timeWindowStart: string;
   timeWindowEnd: string;
-}) {
+}): Promise<number> {
   const admin = createAdminClient();
 
   // Feito em etapas (sem embeds aninhados) para não depender de metadados de
@@ -184,7 +198,7 @@ async function runMatchingForRequest(params: {
     .eq("category_id", params.categoryId);
 
   const candidateIds = (categoryLinks ?? []).map((link) => link.professional_id);
-  if (candidateIds.length === 0) return;
+  if (candidateIds.length === 0) return 0;
 
   const [{ data: professionals }, { data: profiles }, { data: rules }, { data: exceptions }] = await Promise.all([
     admin.from("professional_profiles").select("*").in("id", candidateIds).eq("is_active", true),
@@ -193,7 +207,7 @@ async function runMatchingForRequest(params: {
     admin.from("availability_exceptions").select("*").in("professional_id", candidateIds),
   ]);
 
-  if (!professionals || professionals.length === 0) return;
+  if (!professionals || professionals.length === 0) return 0;
 
   const suspendedById = new Map((profiles ?? []).map((p) => [p.id, p.is_suspended]));
   const rulesByProfessional = new Map<string, typeof rules>();
@@ -235,15 +249,19 @@ async function runMatchingForRequest(params: {
     candidateInputs,
   ).slice(0, MAX_MATCHES_PER_REQUEST);
 
-  if (matches.length === 0) return;
+  if (matches.length === 0) return 0;
 
   const supabase = await createClient();
-  await supabase.from("request_matches").insert(
+  const { error } = await supabase.from("request_matches").insert(
     matches.map((m) => ({
       request_id: params.requestId,
       professional_id: m.professionalId,
     })),
   );
+  if (error) {
+    throw new Error(`request_matches não gravados: ${error.message}`);
+  }
+  return matches.length;
 }
 
 export async function cancelServiceRequest(requestId: string) {
@@ -296,6 +314,8 @@ export async function confirmMatch(params: {
     throw new Error("Não foi possível confirmar o agendamento.");
   }
 
+  await trackServerEvent("appointment_confirmed", { userId: user.id, requestId: params.requestId });
+
   revalidatePath(`/pedidos/${params.requestId}`);
   revalidatePath("/pedidos");
 }
@@ -332,6 +352,8 @@ export async function createReview(params: {
       error.code === "23505" ? "Você já avaliou este atendimento." : "Não foi possível registrar a avaliação.",
     );
   }
+
+  await trackServerEvent("review_submitted", { userId: user.id, metadata: { rating: params.rating } });
 
   revalidatePath("/pedidos");
   return actionOk();

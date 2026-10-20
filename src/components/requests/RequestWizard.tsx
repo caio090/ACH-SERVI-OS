@@ -7,6 +7,7 @@ import { createServiceRequest, type CreateRequestState } from "@/lib/actions/req
 import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
 import { compressImageForUpload } from "@/lib/imageCompression";
+import { trackClientEvent } from "@/lib/analytics.client";
 import { IMAGE_UPLOAD_RULES } from "@/lib/uploads";
 import {
   REQUEST_DRAFT_STORAGE_KEY,
@@ -127,6 +128,13 @@ export function RequestWizard({
   }, [categories, initialCategorySlug, initialQuery]);
 
   useEffect(() => {
+    // Só na abertura do wizard: valores iniciais vindos da URL.
+    if (initialQuery) trackClientEvent("search_started", { has_query: true });
+    trackClientEvent("request_started", { has_category: Boolean(initialCategorySlug), from_search: Boolean(initialQuery) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
     try {
       sessionStorage.setItem(REQUEST_DRAFT_STORAGE_KEY, JSON.stringify(draft));
@@ -152,6 +160,9 @@ export function RequestWizard({
   }
 
   function selectCategory(category: CategoryRow) {
+    if (category.id !== draft.categoryId) {
+      trackClientEvent("category_selected", { category_slug: category.slug });
+    }
     updateDraft({
       categoryId: category.id,
       categorySlug: category.slug,
