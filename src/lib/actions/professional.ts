@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isValidProfessionalAppointmentTransition } from "@/lib/appointmentTransitions";
 import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
 import { buildImageObjectPath, getUploadedFiles, validateImageFile } from "@/lib/uploads";
+import { checkRateLimit } from "@/lib/rateLimit.server";
 
 export interface ProfessionalProfileState {
   error?: string;
@@ -244,6 +245,9 @@ export async function addPortfolioItem(formData: FormData): Promise<ActionResult
   if (!validation.ok) {
     return actionError(validation.error);
   }
+
+  const limit = await checkRateLimit("image_upload", user.id);
+  if (!limit.ok) return actionError(limit.error, limit.retryAfterSeconds);
 
   const path = buildImageObjectPath(user.id, validation.extension);
   const { error: uploadError } = await supabase.storage.from("portfolio").upload(path, validation.bytes, {

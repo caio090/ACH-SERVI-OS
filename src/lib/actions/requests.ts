@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { matchProfessionals, type MatchCandidateInput } from "@/lib/matching";
 import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
 import { buildImageObjectPath, getUploadedFiles, IMAGE_UPLOAD_RULES, validateImageFile } from "@/lib/uploads";
+import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
+import { checkRateLimit } from "@/lib/rateLimit.server";
 
 const MAX_MATCHES_PER_REQUEST = 20;
 
@@ -36,6 +38,11 @@ export async function createServiceRequest(
 
   if (!user) {
     return { authRequired: true, error: "Você precisa entrar para criar um pedido." };
+  }
+
+  const limit = await checkRateLimit("request_create", user.id);
+  if (!limit.ok) {
+    return { error: limit.error };
   }
 
   const categoryId = String(formData.get("category_id") || "");
@@ -271,12 +278,9 @@ export async function confirmMatch(params: {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("not_authenticated");
 
-  await supabase
-    .from("service_requests")
-    .update({ status: "accepted", accepted_match_id: params.matchId })
-    .eq("id", params.requestId)
-    .eq("client_id", user.id);
-
+  // O trigger sync_request_status_on_appointment_insert já move o pedido para
+  // 'scheduled' e grava accepted_match_id; atualizar o pedido antes do insert
+  // deixava o pedido preso em 'accepted' quando o insert era recusado (0015).
   const { error } = await supabase.from("appointments").insert({
     request_id: params.requestId,
     request_match_id: params.matchId,
@@ -301,24 +305,34 @@ export async function createReview(params: {
   professionalId: string;
   rating: number;
   comment: string;
-}) {
+}): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("not_authenticated");
+  if (!user) return actionError("Você precisa entrar.");
+
+  if (!Number.isInteger(params.rating) || params.rating < 1 || params.rating > 5) {
+    return actionError("Escolha uma nota de 1 a 5.");
+  }
+
+  const limit = await checkRateLimit("review_create", user.id);
+  if (!limit.ok) return actionError(limit.error, limit.retryAfterSeconds);
 
   const { error } = await supabase.from("reviews").insert({
     appointment_id: params.appointmentId,
     client_id: user.id,
     professional_id: params.professionalId,
     rating: params.rating,
-    comment: params.comment,
+    comment: params.comment.trim().slice(0, 1000),
   });
 
   if (error) {
-    throw new Error("Não foi possível registrar a avaliação.");
+    return actionError(
+      error.code === "23505" ? "Você já avaliou este atendimento." : "Não foi possível registrar a avaliação.",
+    );
   }
 
   revalidatePath("/pedidos");
+  return actionOk();
 }

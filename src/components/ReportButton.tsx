@@ -33,12 +33,12 @@ export function ReportButton({ targetType, targetId }: { targetType: ReportTarge
         setError(null);
         const formData = new FormData(e.currentTarget);
         startTransition(async () => {
-          try {
-            await createReport({ targetType, targetId, reason: String(formData.get("reason") || "") });
-            setSent(true);
-          } catch (err) {
-            setError(err instanceof Error ? err.message : "Não foi possível enviar.");
+          const result = await createReport({ targetType, targetId, reason: String(formData.get("reason") || "") });
+          if (!result.ok) {
+            setError(result.error);
+            return;
           }
+          setSent(true);
         });
       }}
     >

@@ -29,17 +29,17 @@ export function ReviewForm({
         setError(null);
         const formData = new FormData(event.currentTarget);
         startTransition(async () => {
-          try {
-            await createReview({
-              appointmentId,
-              professionalId,
-              rating,
-              comment: String(formData.get("comment") || ""),
-            });
-            router.push(`/pedidos/${requestId}`);
-          } catch {
-            setError("Não foi possível enviar sua avaliação. Tente novamente.");
+          const result = await createReview({
+            appointmentId,
+            professionalId,
+            rating,
+            comment: String(formData.get("comment") || ""),
+          });
+          if (!result.ok) {
+            setError(result.error);
+            return;
           }
+          router.push(`/pedidos/${requestId}`);
         });
       }}
     >

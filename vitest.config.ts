@@ -9,10 +9,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    // Os testes *.db.test.ts sobem um Postgres (PGlite/WASM) por arquivo;
-    // rodar arquivos em série evita estourar a memória do worker.
+    // Os testes *.db.test.ts sobem Postgres (PGlite/WASM). Arquivos em série,
+    // num único processo, e sem a recompilação otimizada do WASM em segundo
+    // plano (--liftoff-only), que estoura memória em máquinas com pouca RAM.
     fileParallelism: false,
+    pool: "forks",
+    poolOptions: { forks: { singleFork: true, execArgv: ["--liftoff-only"] } },
     testTimeout: 30_000,
-    hookTimeout: 60_000,
+    hookTimeout: 120_000,
   },
 });

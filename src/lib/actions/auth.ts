@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "@/lib/safeRedirect";
+import { checkRateLimit } from "@/lib/rateLimit.server";
 
 export interface AuthActionState {
   error?: string;
@@ -21,6 +22,11 @@ export async function signIn(_prevState: AuthActionState, formData: FormData): P
 
   if (!email || !password) {
     return { error: "Informe e-mail e senha." };
+  }
+
+  const limit = await checkRateLimit("auth_sign_in");
+  if (!limit.ok) {
+    return { error: limit.error };
   }
 
   const supabase = await createClient();
@@ -44,6 +50,11 @@ export async function signUp(_prevState: AuthActionState, formData: FormData): P
 
   if (password.length < 6) {
     return { error: "A senha precisa ter pelo menos 6 caracteres." };
+  }
+
+  const limit = await checkRateLimit("auth_sign_up");
+  if (!limit.ok) {
+    return { error: limit.error };
   }
 
   const supabase = await createClient();
