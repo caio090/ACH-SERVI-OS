@@ -61,7 +61,12 @@ export async function createUser(
     JSON.stringify({ full_name: params.fullName ?? params.email, ...params.metadata }),
   ]);
   if (params.role && params.role !== "client") {
-    await db.query("update public.profiles set role = $2 where id = $1", [params.id, params.role]);
+    // Como um operador faria no SQL Editor: sem disparar o trigger que impede
+    // não-admins de mudar o próprio papel (auth.uid() é nulo aqui).
+    await db.transaction(async (tx) => {
+      await tx.exec("set local session_replication_role = replica");
+      await tx.query("update public.profiles set role = $2 where id = $1", [params.id, params.role]);
+    });
   }
 }
 

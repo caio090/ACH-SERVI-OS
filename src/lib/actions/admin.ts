@@ -2,81 +2,105 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
+import { checkRateLimit } from "@/lib/rateLimit.server";
 
-async function requireAdminClient() {
+// O registro de auditoria (admin_action_logs) é gravado pelo próprio banco,
+// via triggers da migration 0017 — não depende destas actions e não pode ser
+// pulado por quem chama a API diretamente.
+
+type AdminContext =
+  | { ok: true; supabase: Awaited<ReturnType<typeof createClient>>; adminId: string }
+  | { ok: false; result: ActionResult };
+
+async function requireAdmin(): Promise<AdminContext> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("not_authenticated");
+  if (!user) return { ok: false, result: actionError("Você precisa entrar.") };
 
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin") throw new Error("not_admin");
+  if (profile?.role !== "admin") return { ok: false, result: actionError("Acesso restrito a administradores.") };
 
-  return { supabase, adminId: user.id };
+  const limit = await checkRateLimit("admin_action", user.id);
+  if (!limit.ok) return { ok: false, result: actionError(limit.error, limit.retryAfterSeconds) };
+
+  return { ok: true, supabase, adminId: user.id };
 }
 
-async function logAdminAction(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  adminId: string,
-  action: string,
-  targetType: string,
-  targetId: string | null,
-) {
-  await supabase.from("admin_action_logs").insert({ admin_id: adminId, action, target_type: targetType, target_id: targetId });
-}
+export async function toggleUserSuspension(userId: string, suspend: boolean): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+  if (userId === ctx.adminId) return actionError("Você não pode suspender a própria conta.");
 
-export async function toggleUserSuspension(userId: string, suspend: boolean) {
-  const { supabase, adminId } = await requireAdminClient();
-  await supabase.from("profiles").update({ is_suspended: suspend }).eq("id", userId);
-  await logAdminAction(supabase, adminId, suspend ? "suspend_user" : "reactivate_user", "user", userId);
+  const { error } = await ctx.supabase.from("profiles").update({ is_suspended: suspend }).eq("id", userId);
+  if (error) return actionError("Não foi possível atualizar o usuário.");
   revalidatePath("/admin/usuarios");
+  return actionOk();
 }
 
-export async function toggleProfessionalVerified(professionalId: string, verified: boolean) {
-  const { supabase, adminId } = await requireAdminClient();
-  await supabase.from("professional_profiles").update({ is_verified: verified }).eq("id", professionalId);
-  await logAdminAction(supabase, adminId, verified ? "verify_professional" : "unverify_professional", "professional", professionalId);
+export async function toggleProfessionalVerified(professionalId: string, verified: boolean): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+
+  const { error } = await ctx.supabase.from("professional_profiles").update({ is_verified: verified }).eq("id", professionalId);
+  if (error) return actionError("Não foi possível atualizar o profissional.");
   revalidatePath("/admin/profissionais");
+  return actionOk();
 }
 
-export async function toggleCategoryActive(categoryId: string, isActive: boolean) {
-  const { supabase, adminId } = await requireAdminClient();
-  await supabase.from("categories").update({ is_active: isActive }).eq("id", categoryId);
-  await logAdminAction(supabase, adminId, isActive ? "activate_category" : "deactivate_category", "category", categoryId);
+export async function toggleCategoryActive(categoryId: string, isActive: boolean): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+
+  const { error } = await ctx.supabase.from("categories").update({ is_active: isActive }).eq("id", categoryId);
+  if (error) return actionError("Não foi possível atualizar a categoria.");
   revalidatePath("/admin/categorias");
+  return actionOk();
 }
 
-export async function createCategory(formData: FormData) {
-  const { supabase, adminId } = await requireAdminClient();
+export async function createCategory(formData: FormData): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+
   const name = String(formData.get("name") || "").trim();
   const slug = String(formData.get("slug") || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
-  const icon = String(formData.get("icon") || "🛠️");
+  const icon = String(formData.get("icon") || "🛠️").trim().slice(0, 16) || "🛠️";
 
-  if (!name || !slug) throw new Error("Nome e slug são obrigatórios.");
+  if (!name || !slug) return actionError("Nome e slug são obrigatórios.");
 
-  const { data } = await supabase.from("categories").insert({ name, slug, icon }).select("id").single();
-  await logAdminAction(supabase, adminId, "create_category", "category", data?.id ?? null);
+  const { error } = await ctx.supabase.from("categories").insert({ name, slug, icon });
+  if (error) {
+    return actionError(error.code === "23505" ? "Já existe uma categoria com esse slug." : "Não foi possível criar a categoria.");
+  }
   revalidatePath("/admin/categorias");
+  return actionOk();
 }
 
-export async function resolveReport(reportId: string, status: "reviewed" | "dismissed" | "actioned") {
-  const { supabase, adminId } = await requireAdminClient();
-  await supabase
+export async function resolveReport(reportId: string, status: "reviewed" | "dismissed" | "actioned"): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+
+  const { error } = await ctx.supabase
     .from("reports")
-    .update({ status, resolved_by: adminId, resolved_at: new Date().toISOString() })
+    .update({ status, resolved_by: ctx.adminId, resolved_at: new Date().toISOString() })
     .eq("id", reportId);
-  await logAdminAction(supabase, adminId, `resolve_report_${status}`, "report", reportId);
+  if (error) return actionError("Não foi possível atualizar a denúncia.");
   revalidatePath("/admin/denuncias");
+  return actionOk();
 }
 
-export async function deleteReview(reviewId: string) {
-  const { supabase, adminId } = await requireAdminClient();
-  await supabase.from("reviews").delete().eq("id", reviewId);
-  await logAdminAction(supabase, adminId, "delete_review", "review", reviewId);
+export async function deleteReview(reviewId: string): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+
+  const { error } = await ctx.supabase.from("reviews").delete().eq("id", reviewId);
+  if (error) return actionError("Não foi possível remover a avaliação.");
   revalidatePath("/admin/avaliacoes");
+  return actionOk();
 }

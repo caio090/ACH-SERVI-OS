@@ -1,27 +1,24 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { toggleProfessionalVerified } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/Button";
+import { ActionError } from "@/components/admin/ActionError";
+import { useActionRunner } from "@/components/admin/useActionRunner";
 
 export function VerifyButton({ professionalId, isVerified }: { professionalId: string; isVerified: boolean }) {
-  const [isPending, startTransition] = useTransition();
-  const router = useRouter();
+  const { run, isPending, error } = useActionRunner();
 
   return (
-    <Button
-      size="sm"
-      variant="secondary"
-      isLoading={isPending}
-      onClick={() =>
-        startTransition(async () => {
-          await toggleProfessionalVerified(professionalId, !isVerified);
-          router.refresh();
-        })
-      }
-    >
-      {isVerified ? "Remover verificação" : "Verificar"}
-    </Button>
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        size="sm"
+        variant="secondary"
+        isLoading={isPending}
+        onClick={() => run(() => toggleProfessionalVerified(professionalId, !isVerified))}
+      >
+        {isVerified ? "Remover verificação" : "Verificar"}
+      </Button>
+      <ActionError error={error} />
+    </div>
   );
 }

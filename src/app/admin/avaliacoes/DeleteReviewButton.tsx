@@ -1,29 +1,28 @@
 "use client";
 
-import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { deleteReview } from "@/lib/actions/admin";
 import { Button } from "@/components/ui/Button";
+import { ActionError } from "@/components/admin/ActionError";
+import { useActionRunner } from "@/components/admin/useActionRunner";
 
 export function DeleteReviewButton({ reviewId }: { reviewId: string }) {
-  const [isPending, startTransition] = useTransition();
-  const router = useRouter();
+  const { run, isPending, error } = useActionRunner();
 
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="text-red-600 hover:bg-red-50"
-      isLoading={isPending}
-      onClick={() => {
-        if (!confirm("Remover esta avaliação?")) return;
-        startTransition(async () => {
-          await deleteReview(reviewId);
-          router.refresh();
-        });
-      }}
-    >
-      Remover
-    </Button>
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-red-600 hover:bg-red-50"
+        isLoading={isPending}
+        onClick={() => {
+          if (!confirm("Remover esta avaliação?")) return;
+          run(() => deleteReview(reviewId));
+        }}
+      >
+        Remover
+      </Button>
+      <ActionError error={error} />
+    </div>
   );
 }

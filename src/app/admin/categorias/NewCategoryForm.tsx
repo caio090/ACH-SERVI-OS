@@ -1,15 +1,15 @@
 "use client";
 
-import { useRef, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { createCategory } from "@/lib/actions/admin";
 import { InputField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { ActionError } from "@/components/admin/ActionError";
+import { useActionRunner } from "@/components/admin/useActionRunner";
 
 export function NewCategoryForm() {
-  const [isPending, startTransition] = useTransition();
+  const { run, isPending, error } = useActionRunner();
   const formRef = useRef<HTMLFormElement>(null);
-  const router = useRouter();
 
   return (
     <form
@@ -18,11 +18,7 @@ export function NewCategoryForm() {
       onSubmit={(e) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        startTransition(async () => {
-          await createCategory(formData);
-          formRef.current?.reset();
-          router.refresh();
-        });
+        run(() => createCategory(formData), () => formRef.current?.reset());
       }}
     >
       <InputField id="name" name="name" label="Nome" required />
@@ -32,6 +28,9 @@ export function NewCategoryForm() {
         <Button type="submit" size="sm" isLoading={isPending} fullWidth>
           Adicionar categoria
         </Button>
+      </div>
+      <div className="sm:col-span-4">
+        <ActionError error={error} />
       </div>
     </form>
   );
