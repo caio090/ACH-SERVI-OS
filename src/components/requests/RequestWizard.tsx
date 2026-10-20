@@ -6,6 +6,8 @@ import type { CategoryRow } from "@/lib/database.types";
 import { createServiceRequest, type CreateRequestState } from "@/lib/actions/requests";
 import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
+import { compressImageForUpload } from "@/lib/imageCompression";
+import { IMAGE_UPLOAD_RULES } from "@/lib/uploads";
 import {
   REQUEST_DRAFT_STORAGE_KEY,
   REQUEST_STEP_LABELS,
@@ -26,6 +28,9 @@ import {
   type RequestUrgency,
   type RequestWizardStep,
 } from "@/lib/request-flow";
+
+// Abaixo do bodySizeLimit das server actions (next.config.js), com folga para os campos do formulário.
+const MAX_TOTAL_PHOTO_BYTES = 3.5 * 1024 * 1024;
 
 type RequestWizardProps = {
   categories: CategoryRow[];
@@ -92,7 +97,7 @@ export function RequestWizard({
   const [message, setMessage] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<CreateRequestState>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [photoNames, setPhotoNames] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<File[]>([]);
   const today = localToday();
 
   useEffect(() => {
@@ -206,7 +211,15 @@ export function RequestWizard({
     try {
       const payload = buildServiceRequestPayload(draft, today);
       setIsSubmitting(true);
-      const result = await createServiceRequest({}, requestPayloadToFormData(payload));
+      const formData = requestPayloadToFormData(payload);
+      const compressedPhotos = await Promise.all(photos.map((photo) => compressImageForUpload(photo)));
+      const totalPhotoBytes = compressedPhotos.reduce((sum, photo) => sum + photo.size, 0);
+      if (totalPhotoBytes > MAX_TOTAL_PHOTO_BYTES) {
+        setSubmitState({ error: "As fotos ficaram grandes demais para envio. Remova algumas e tente de novo." });
+        return;
+      }
+      compressedPhotos.forEach((photo) => formData.append("photos", photo));
+      const result = await createServiceRequest({}, formData);
       setSubmitState(result);
 
       if (result.authRequired) {
@@ -216,7 +229,7 @@ export function RequestWizard({
 
       if (result.requestId) {
         sessionStorage.removeItem(REQUEST_DRAFT_STORAGE_KEY);
-        router.push(`/pedidos/${result.requestId}`);
+        router.push(`/pedidos/${result.requestId}${result.photoWarning ? "?aviso=fotos" : ""}`);
       }
     } catch (error) {
       setSubmitState({
@@ -343,7 +356,7 @@ export function RequestWizard({
                   <label htmlFor="request-photos" className="block text-sm font-bold text-neutral-800">
                     Fotos do problema (opcional)
                   </label>
-                  <p className="text-xs text-neutral-500">Pré-visualização local; o envio será habilitado com o armazenamento.</p>
+                  <p className="text-xs text-neutral-500">Até {IMAGE_UPLOAD_RULES.maxRequestPhotos} fotos (JPEG, PNG ou WEBP). Só você e os profissionais do pedido veem.</p>
                 </div>
               </div>
               <input
@@ -352,13 +365,13 @@ export function RequestWizard({
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 onChange={(event) =>
-                  setPhotoNames(Array.from(event.target.files ?? []).slice(0, 5).map((file) => file.name))
+                  setPhotos(Array.from(event.target.files ?? []).slice(0, IMAGE_UPLOAD_RULES.maxRequestPhotos))
                 }
                 className="mt-3 block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-neutral-100 file:px-3 file:py-2 file:text-sm file:font-semibold"
               />
-              {photoNames.length > 0 && (
+              {photos.length > 0 && (
                 <p className="mt-2 truncate text-xs text-neutral-500">
-                  {photoNames.length} foto(s) selecionada(s): {photoNames.join(", ")}
+                  {photos.length} foto(s) selecionada(s): {photos.map((photo) => photo.name).join(", ")}
                 </p>
               )}
             </div>

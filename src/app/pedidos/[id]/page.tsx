@@ -22,10 +22,17 @@ import { ConfirmMatchForm } from "./ConfirmMatchForm";
 import { RequestTimeline } from "@/components/requests/RequestTimeline";
 import { Alert } from "@/components/ui/Alert";
 import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
+import { RequestPhotos } from "@/components/requests/RequestPhotos";
 
 type MatchWithProfessional = RequestMatchRow & { professional: PublicProfessionalProfileRow | undefined };
 
-export default async function RequestDetailPage({ params }: { params: { id: string } }) {
+export default async function RequestDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { aviso?: string };
+}) {
   if (!hasPublicSupabaseConfig()) {
     return (
       <div className="mx-auto max-w-2xl py-6">
@@ -128,8 +135,15 @@ export default async function RequestDetailPage({ params }: { params: { id: stri
         <Badge tone="brand">{SERVICE_REQUEST_STATUS_LABELS[request.status]}</Badge>
       </div>
 
+      {searchParams.aviso === "fotos" && (
+        <Alert tone="error">
+          Algumas fotos não puderam ser anexadas (formato ou tamanho inválido). O pedido foi criado normalmente.
+        </Alert>
+      )}
+
       <Card className="flex flex-col gap-2">
         <p className="text-sm text-neutral-800">{request.description}</p>
+        <RequestPhotos paths={request.photo_paths} />
         <div className="grid grid-cols-2 gap-2 text-sm text-neutral-600">
           <p>📍 {request.neighborhood}, {request.city}</p>
           <p>📅 {new Date(`${request.desired_date}T00:00:00`).toLocaleDateString("pt-BR")}</p>

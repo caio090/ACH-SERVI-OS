@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isValidProfessionalAppointmentTransition } from "@/lib/appointmentTransitions";
+import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
+import { buildImageObjectPath, getUploadedFiles, validateImageFile } from "@/lib/uploads";
 
 export interface ProfessionalProfileState {
   error?: string;
@@ -227,46 +229,70 @@ export async function deleteAvailabilityException(id: string) {
   revalidatePath("/pro/agenda");
 }
 
-export async function addPortfolioItem(formData: FormData) {
+export async function addPortfolioItem(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("not_authenticated");
+  if (!user) return actionError("Você precisa entrar.");
 
-  const file = formData.get("photo");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Selecione uma foto.");
+  const [file] = getUploadedFiles(formData, "photo");
+  if (!file) {
+    return actionError("Selecione uma foto.");
   }
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 8 * 1024 * 1024) {
-    throw new Error("Foto inválida (use JPEG/PNG/WEBP até 8MB).");
+  const validation = await validateImageFile(file);
+  if (!validation.ok) {
+    return actionError(validation.error);
   }
 
-  const path = `${user.id}/${Date.now()}-${file.name}`;
-  const { error: uploadError } = await supabase.storage.from("portfolio").upload(path, file, {
-    contentType: file.type,
+  const path = buildImageObjectPath(user.id, validation.extension);
+  const { error: uploadError } = await supabase.storage.from("portfolio").upload(path, validation.bytes, {
+    contentType: validation.mime,
   });
   if (uploadError) {
-    throw new Error("Não foi possível enviar a foto.");
+    return actionError("Não foi possível enviar a foto.");
   }
 
-  await supabase.from("portfolio_items").insert({
+  const { error: insertError } = await supabase.from("portfolio_items").insert({
     professional_id: user.id,
-    title: String(formData.get("title") || ""),
-    description: String(formData.get("description") || ""),
+    title: String(formData.get("title") || "").trim().slice(0, 120),
+    description: String(formData.get("description") || "").trim().slice(0, 500),
     photo_path: path,
   });
+  if (insertError) {
+    // Não deixa arquivo órfão no Storage se o registro não foi criado.
+    await supabase.storage.from("portfolio").remove([path]);
+    return actionError("Não foi possível salvar a foto no portfólio.");
+  }
 
   revalidatePath("/pro/portfolio");
+  return actionOk();
 }
 
-export async function deletePortfolioItem(id: string) {
+export async function deletePortfolioItem(id: string): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("not_authenticated");
+  if (!user) return actionError("Você precisa entrar.");
 
-  await supabase.from("portfolio_items").delete().eq("id", id).eq("professional_id", user.id);
+  const { data: item } = await supabase
+    .from("portfolio_items")
+    .select("photo_path")
+    .eq("id", id)
+    .eq("professional_id", user.id)
+    .maybeSingle();
+  if (!item) {
+    return actionError("Foto não encontrada.");
+  }
+
+  const { error } = await supabase.from("portfolio_items").delete().eq("id", id).eq("professional_id", user.id);
+  if (error) {
+    return actionError("Não foi possível remover a foto.");
+  }
+  // A policy portfolio_write_own só permite remover objetos da própria pasta.
+  await supabase.storage.from("portfolio").remove([item.photo_path]);
+
   revalidatePath("/pro/portfolio");
+  return actionOk();
 }

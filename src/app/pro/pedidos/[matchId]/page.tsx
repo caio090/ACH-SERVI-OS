@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { REQUEST_MATCH_STATUS_LABELS, SERVICE_REQUEST_STATUS_LABELS } from "@/lib/constants";
 import { MatchResponseActions } from "./MatchResponseActions";
+import { RequestPhotos } from "@/components/requests/RequestPhotos";
 
 export default async function ProfessionalMatchPage({ params }: { params: { matchId: string } }) {
   const supabase = await createClient();
@@ -46,6 +47,7 @@ export default async function ProfessionalMatchPage({ params }: { params: { matc
 
       <Card className="flex flex-col gap-2">
         <p className="text-sm text-neutral-800">{request.description}</p>
+        <RequestPhotos paths={request.photo_paths} />
         <div className="grid grid-cols-2 gap-2 text-sm text-neutral-600">
           <p>📍 {request.neighborhood}, {request.city}</p>
           <p>📅 {new Date(`${request.desired_date}T00:00:00`).toLocaleDateString("pt-BR")}</p>

@@ -5,14 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchProfessionals, type MatchCandidateInput } from "@/lib/matching";
 import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
+import { buildImageObjectPath, getUploadedFiles, IMAGE_UPLOAD_RULES, validateImageFile } from "@/lib/uploads";
 
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
-const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_MATCHES_PER_REQUEST = 20;
 
 export interface CreateRequestState {
   error?: string;
   requestId?: string;
+  photoWarning?: string;
   authRequired?: boolean;
   environmentBlocked?: boolean;
 }
@@ -102,18 +102,23 @@ export async function createServiceRequest(
     };
   }
 
-  const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
+  const photos = getUploadedFiles(formData, "photos").slice(0, IMAGE_UPLOAD_RULES.maxRequestPhotos);
   const photoPaths: string[] = [];
+  let rejectedPhotos = 0;
 
-  for (const photo of photos.slice(0, 5)) {
-    if (!ALLOWED_PHOTO_TYPES.includes(photo.type) || photo.size > MAX_PHOTO_BYTES) {
+  for (const photo of photos) {
+    const validation = await validateImageFile(photo);
+    if (!validation.ok) {
+      rejectedPhotos += 1;
       continue;
     }
-    const path = `${request.id}/${Date.now()}-${photo.name}`;
-    const { error: uploadError } = await supabase.storage.from("request-photos").upload(path, photo, {
-      contentType: photo.type,
+    const path = buildImageObjectPath(request.id, validation.extension);
+    const { error: uploadError } = await supabase.storage.from("request-photos").upload(path, validation.bytes, {
+      contentType: validation.mime,
     });
-    if (!uploadError) {
+    if (uploadError) {
+      rejectedPhotos += 1;
+    } else {
       photoPaths.push(path);
     }
   }
@@ -138,7 +143,13 @@ export async function createServiceRequest(
   }
 
   revalidatePath("/pedidos");
-  return { requestId: request.id };
+  return {
+    requestId: request.id,
+    photoWarning:
+      rejectedPhotos > 0
+        ? `${rejectedPhotos} foto(s) não puderam ser anexadas (formato ou tamanho inválido). O pedido foi criado normalmente.`
+        : undefined,
+  };
 }
 
 /**
