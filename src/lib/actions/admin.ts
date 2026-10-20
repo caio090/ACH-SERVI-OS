@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
 import { checkRateLimit } from "@/lib/rateLimit.server";
+import { isReadinessStatus } from "@/lib/betaReadiness";
 
 // O registro de auditoria (admin_action_logs) é gravado pelo próprio banco,
 // via triggers da migration 0017 — não depende destas actions e não pode ser
@@ -92,6 +93,21 @@ export async function resolveReport(reportId: string, status: "reviewed" | "dism
     .eq("id", reportId);
   if (error) return actionError("Não foi possível atualizar a denúncia.");
   revalidatePath("/admin/denuncias");
+  return actionOk();
+}
+
+export async function updateReadinessItem(itemId: string, status: string, notes: string): Promise<ActionResult> {
+  const ctx = await requireAdmin();
+  if (!ctx.ok) return ctx.result;
+  if (!isReadinessStatus(status)) return actionError("Status inválido.");
+
+  const { error } = await ctx.supabase
+    .from("beta_readiness_items")
+    .update({ status, notes: notes.trim().slice(0, 500) })
+    .eq("id", itemId);
+  if (error) return actionError("Não foi possível atualizar o item.");
+  revalidatePath("/admin/prontidao");
+  revalidatePath("/admin");
   return actionOk();
 }
 

@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 
 const links = [
-  { href: "/admin", label: "Métricas" },
+  { href: "/admin", label: "Painel" },
+  { href: "/admin/prontidao", label: "Prontidão do Beta" },
   { href: "/admin/usuarios", label: "Usuários" },
   { href: "/admin/profissionais", label: "Profissionais" },
   { href: "/admin/categorias", label: "Categorias" },

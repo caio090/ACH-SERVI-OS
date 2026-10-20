@@ -212,6 +212,17 @@ export type ProductEventRow = Timestamps & {
   metadata: Record<string, unknown>;
 };
 
+export type BetaReadinessItemRow = {
+  id: string;
+  category: string;
+  title: string;
+  status: "not_started" | "in_progress" | "blocked" | "done";
+  notes: string;
+  sort_order: number;
+  updated_at: string;
+  updated_by: string | null;
+};
+
 export type PublicProfessionalProfileRow = {
   id: string;
   full_name: string;
@@ -325,6 +336,11 @@ export type Database = {
           Partial<Pick<AdminActionLogRow, "metadata">>,
         Partial<Omit<AdminActionLogRow, "id" | "created_at">>
       >;
+      beta_readiness_items: TableDef<
+        BetaReadinessItemRow,
+        Pick<BetaReadinessItemRow, "category" | "title"> & Partial<Omit<BetaReadinessItemRow, "id" | "category" | "title">>,
+        Partial<Pick<BetaReadinessItemRow, "status" | "notes" | "sort_order" | "title">>
+      >;
       product_events: TableDef<
         ProductEventRow,
         Pick<ProductEventRow, "event_name"> & Partial<Omit<ProductEventRow, "id" | "created_at" | "event_name">>,
@@ -353,6 +369,19 @@ export type Database = {
       is_own_professional_profile: {
         Args: { target_professional_id: string };
         Returns: boolean;
+      };
+      admin_beta_metrics: {
+        Args: Record<string, never>;
+        Returns: {
+          clients_registered: number;
+          professionals_registered: number;
+          professionals_verified: number;
+          requests_open: number;
+          requests_with_match: number;
+          appointments_total: number;
+          services_completed: number;
+          reviews_total: number;
+        }[];
       };
       admin_product_funnel: {
         Args: { p_since: string };
