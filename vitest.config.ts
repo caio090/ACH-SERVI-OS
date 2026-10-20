@@ -9,5 +9,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Os testes *.db.test.ts sobem um Postgres (PGlite/WASM) por arquivo;
+    // rodar arquivos em série evita estourar a memória do worker.
+    fileParallelism: false,
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
 });

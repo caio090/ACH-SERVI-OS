@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { asAnon, asUser, createTestDb, createUser, IDS, one, rows, type Db } from "./db";
 
 /**
@@ -22,6 +22,8 @@ describe("fluxo do MVP sob RLS (Postgres local com as migrations)", () => {
     await db.query("update public.profiles set phone = '11999990000' where id = $1", [IDS.professional]);
     categoryId = (await one<{ id: string }>(db, "select id from public.categories where slug = 'eletricista'")).id;
   }, 60_000);
+
+  afterAll(() => db.close());
 
   it("1-3. profissional monta perfil, categoria e agenda", async () => {
     await asUser(db, IDS.professional, async (tx) => {

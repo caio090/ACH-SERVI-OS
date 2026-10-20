@@ -23,17 +23,31 @@ export function listMigrationFiles() {
     .sort();
 }
 
-export async function createTestDb(): Promise<Db> {
+let snapshot: Promise<File | Blob> | null = null;
+
+async function buildSnapshot() {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(STUB_SQL);
   for (const file of listMigrationFiles()) {
     try {
       await db.exec(readFileSync(path.join(MIGRATIONS_DIR, file), "utf8"));
     } catch (error) {
+      await db.close();
       throw new Error(`Migration ${file} falhou: ${(error as Error).message}`);
     }
   }
-  return db;
+  const dump = await db.dumpDataDir("none");
+  await db.close();
+  return dump;
+}
+
+/**
+ * Banco novo e isolado por chamada. As migrations rodam uma vez por processo
+ * e cada instância nasce de um snapshot desse estado. Feche com `db.close()`.
+ */
+export async function createTestDb(): Promise<Db> {
+  snapshot ??= buildSnapshot();
+  return new PGlite({ extensions: { pgcrypto }, loadDataDir: await snapshot });
 }
 
 /** Cria um usuário em auth.users (o trigger handle_new_user cria o profile). */
@@ -92,6 +106,49 @@ export async function one<T>(tx: Tx | Db, sql: string, params: unknown[] = []): 
 
 export async function rows<T>(tx: Tx | Db, sql: string, params: unknown[] = []): Promise<T[]> {
   return (await tx.query<T>(sql, params)).rows;
+}
+
+/**
+ * Cenário base: cliente, profissional (com perfil e categoria) e um pedido
+ * aberto com match pendente para esse profissional.
+ */
+export async function seedRequestWithMatch(db: Db) {
+  await createUser(db, { id: IDS.client, email: "cliente.teste@example.com", fullName: "Cliente Teste" });
+  await createUser(db, { id: IDS.professional, email: "pro.teste@example.com", fullName: "Profissional Teste" });
+  const categoryId = (await one<{ id: string }>(db, "select id from public.categories where slug = 'eletricista'")).id;
+
+  await asUser(db, IDS.professional, async (tx) => {
+    await tx.query("insert into public.professional_profiles (id, service_areas) values ($1, '{Centro}')", [IDS.professional]);
+    await tx.query("insert into public.professional_categories (professional_id, category_id) values ($1, $2)", [
+      IDS.professional,
+      categoryId,
+    ]);
+  });
+
+  const requestId = await asUser(db, IDS.client, async (tx) =>
+    (
+      await one<{ id: string }>(
+        tx,
+        `insert into public.service_requests
+          (client_id, category_id, description, neighborhood, city, desired_date, time_window_start, time_window_end, status)
+         values ($1, $2, 'Pedido de teste do cenário base', 'Centro', 'Cidade Piloto', current_date + 3, '09:00', '12:00', 'open')
+         returning id`,
+        [IDS.client, categoryId],
+      )
+    ).id,
+  );
+
+  const matchId = await asUser(db, IDS.client, async (tx) =>
+    (
+      await one<{ id: string }>(
+        tx,
+        "insert into public.request_matches (request_id, professional_id) values ($1, $2) returning id",
+        [requestId, IDS.professional],
+      )
+    ).id,
+  );
+
+  return { categoryId, requestId, matchId };
 }
 
 export const IDS = {
