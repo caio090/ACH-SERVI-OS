@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeRedirectPath } from "@/lib/safeRedirect";
 
 export interface AuthActionState {
   error?: string;
@@ -16,7 +17,7 @@ export async function signOut() {
 export async function signIn(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
-  const redirectTo = String(formData.get("redirect") || "/");
+  const redirectTo = safeRedirectPath(formData.get("redirect"));
 
   if (!email || !password) {
     return { error: "Informe e-mail e senha." };
