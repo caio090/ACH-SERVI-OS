@@ -53,6 +53,8 @@ export type ProfileRow = Timestamps & {
   city: string | null;
   neighborhood: string | null;
   is_suspended: boolean;
+  terms_version: string | null;
+  terms_accepted_at: string | null;
   updated_at: string;
 };
 

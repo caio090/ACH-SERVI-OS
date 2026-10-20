@@ -24,6 +24,18 @@ export default function LoginPage({
           Cadastre-se
         </Link>
       </p>
+
+      <p className="text-center text-xs text-neutral-500">
+        Ao entrar, você continua sujeito aos{" "}
+        <Link href="/termos" className="underline hover:text-neutral-800">
+          Termos de Uso
+        </Link>{" "}
+        e à{" "}
+        <Link href="/privacidade" className="underline hover:text-neutral-800">
+          Política de Privacidade
+        </Link>
+        .
+      </p>
     </div>
   );
 }

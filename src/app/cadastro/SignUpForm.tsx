@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { signUp, type AuthActionState } from "@/lib/actions/auth";
 import { InputField } from "@/components/ui/Field";
@@ -35,6 +36,20 @@ export function SignUpForm() {
         autoComplete="new-password"
         hint="Mínimo de 6 caracteres."
       />
+      <label className="flex items-start gap-2 text-sm text-neutral-700">
+        <input type="checkbox" name="accept_terms" required className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600" />
+        <span>
+          Li e aceito os{" "}
+          <Link href="/termos" target="_blank" className="font-semibold text-brand-600 hover:underline">
+            Termos de Uso
+          </Link>{" "}
+          e a{" "}
+          <Link href="/privacidade" target="_blank" className="font-semibold text-brand-600 hover:underline">
+            Política de Privacidade
+          </Link>
+          .
+        </span>
+      </label>
       <SubmitButton />
     </form>
   );

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { safeRedirectPath } from "@/lib/safeRedirect";
 import { checkRateLimit } from "@/lib/rateLimit.server";
+import { LEGAL_VERSION } from "@/lib/legal";
 
 export interface AuthActionState {
   error?: string;
@@ -52,6 +53,10 @@ export async function signUp(_prevState: AuthActionState, formData: FormData): P
     return { error: "A senha precisa ter pelo menos 6 caracteres." };
   }
 
+  if (formData.get("accept_terms") !== "on") {
+    return { error: "Para criar a conta, aceite os Termos de Uso e a Política de Privacidade." };
+  }
+
   const limit = await checkRateLimit("auth_sign_up");
   if (!limit.ok) {
     return { error: limit.error };
@@ -61,7 +66,8 @@ export async function signUp(_prevState: AuthActionState, formData: FormData): P
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    // terms_version é copiado para profiles pelo trigger handle_new_user (0018).
+    options: { data: { full_name: fullName, terms_version: LEGAL_VERSION } },
   });
 
   if (error) {
