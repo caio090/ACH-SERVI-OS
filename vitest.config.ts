@@ -9,12 +9,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    // Os testes *.db.test.ts sobem Postgres (PGlite/WASM). Arquivos em série,
-    // num único processo, e sem a recompilação otimizada do WASM em segundo
-    // plano (--liftoff-only), que estoura memória em máquinas com pouca RAM.
+    // Os testes *.db.test.ts sobem Postgres (PGlite/WASM). Um arquivo por vez,
+    // cada um em processo novo (a memória do WASM é devolvida entre arquivos),
+    // e sem a recompilação otimizada do WASM em segundo plano (--liftoff-only),
+    // que estoura memória em máquinas com pouca RAM.
     fileParallelism: false,
     pool: "forks",
-    poolOptions: { forks: { singleFork: true, execArgv: ["--liftoff-only"] } },
+    poolOptions: { forks: { minForks: 1, maxForks: 1, execArgv: ["--liftoff-only"] } },
     testTimeout: 30_000,
     hookTimeout: 120_000,
   },
