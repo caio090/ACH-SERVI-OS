@@ -34,7 +34,10 @@ export async function Header() {
             src={headerLogo}
             alt={BRAND_NAME}
             priority
-            sizes="(min-width: 768px) 132px, 108px"
+            // Tamanho fixo (proporção 3:1 do original) com 1x/2x: evita depender
+            // de `sizes`, que deixava o logo sem imagem exatamente em 768px.
+            width={132}
+            height={44}
             className="h-9 w-auto object-contain md:h-11"
           />
         </Link>
@@ -45,10 +48,10 @@ export async function Header() {
           aria-label={`Localização: ${location}`}
         >
           <Icon name="map-pin" className="h-4 w-4 shrink-0 text-action-700" />
-          <span className="truncate text-[11px] font-medium sm:text-xs">{location}</span>
+          <span className="truncate text-[11px] font-medium sm:text-xs md:hidden lg:inline">{location}</span>
         </Link>
 
-        <nav className="order-2 ml-6 hidden items-center gap-1 text-sm font-semibold text-neutral-600 md:flex">
+        <nav className="order-2 ml-4 hidden items-center gap-1 whitespace-nowrap text-sm font-semibold text-neutral-600 md:flex lg:ml-6">
           <Link href="/" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
             Início
           </Link>
