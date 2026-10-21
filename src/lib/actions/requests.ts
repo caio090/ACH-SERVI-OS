@@ -1,0 +1,360 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { matchProfessionals, type MatchCandidateInput } from "@/lib/matching";
+import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
+import { buildImageObjectPath, getUploadedFiles, IMAGE_UPLOAD_RULES, validateImageFile } from "@/lib/uploads";
+import { actionError, actionOk, type ActionResult } from "@/lib/actionResult";
+import { checkRateLimit } from "@/lib/rateLimit.server";
+import { trackServerEvent } from "@/lib/analytics.server";
+
+const MAX_MATCHES_PER_REQUEST = 20;
+
+export interface CreateRequestState {
+  error?: string;
+  requestId?: string;
+  photoWarning?: string;
+  authRequired?: boolean;
+  environmentBlocked?: boolean;
+}
+
+export async function createServiceRequest(
+  _prevState: CreateRequestState,
+  formData: FormData,
+): Promise<CreateRequestState> {
+  if (!hasPublicSupabaseConfig()) {
+    return {
+      environmentBlocked: true,
+      error:
+        "A criação está bloqueada neste ambiente: configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { authRequired: true, error: "Você precisa entrar para criar um pedido." };
+  }
+
+  const limit = await checkRateLimit("request_create", user.id);
+  if (!limit.ok) {
+    return { error: limit.error };
+  }
+
+  const categoryId = String(formData.get("category_id") || "");
+  const description = String(formData.get("description") || "").trim();
+  const neighborhood = String(formData.get("neighborhood") || "").trim();
+  const city = String(formData.get("city") || "").trim();
+  const desiredDate = String(formData.get("desired_date") || "");
+  const timeWindowStart = String(formData.get("time_window_start") || "");
+  const timeWindowEnd = String(formData.get("time_window_end") || "");
+  const isUrgent = formData.get("is_urgent") === "on";
+
+  if (!categoryId || !description || !neighborhood || !city || !desiredDate || !timeWindowStart || !timeWindowEnd) {
+    return { error: "Preencha todos os campos obrigatórios." };
+  }
+
+  if (description.length < 15 || description.length > 600) {
+    return { error: "A descrição deve ter entre 15 e 600 caracteres." };
+  }
+
+  const today = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
+  if (desiredDate < today) {
+    return { error: "A data do serviço não pode estar no passado." };
+  }
+
+  if (timeWindowEnd <= timeWindowStart) {
+    return { error: "O horário final deve ser depois do horário inicial." };
+  }
+
+  const { data: category } = await supabase
+    .from("categories")
+    .select("id, slug")
+    .eq("id", categoryId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!category) {
+    return { error: "Escolha uma categoria de serviço válida." };
+  }
+
+  const { data: request, error: insertError } = await supabase
+    .from("service_requests")
+    .insert({
+      client_id: user.id,
+      category_id: categoryId,
+      description,
+      neighborhood,
+      city,
+      desired_date: desiredDate,
+      time_window_start: timeWindowStart,
+      time_window_end: timeWindowEnd,
+      is_urgent: isUrgent,
+      status: "open",
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !request) {
+    return {
+      error: insertError?.message.includes("aguarde")
+        ? "Aguarde um instante antes de enviar outro pedido."
+        : "Não foi possível criar o pedido. Tente novamente.",
+    };
+  }
+
+  const photos = getUploadedFiles(formData, "photos").slice(0, IMAGE_UPLOAD_RULES.maxRequestPhotos);
+  const photoPaths: string[] = [];
+  let rejectedPhotos = 0;
+
+  for (const photo of photos) {
+    const validation = await validateImageFile(photo);
+    if (!validation.ok) {
+      rejectedPhotos += 1;
+      continue;
+    }
+    const path = buildImageObjectPath(request.id, validation.extension);
+    const { error: uploadError } = await supabase.storage.from("request-photos").upload(path, validation.bytes, {
+      contentType: validation.mime,
+    });
+    if (uploadError) {
+      rejectedPhotos += 1;
+    } else {
+      photoPaths.push(path);
+    }
+  }
+
+  if (photoPaths.length > 0) {
+    await supabase.from("service_requests").update({ photo_paths: photoPaths }).eq("id", request.id);
+  }
+
+  await trackServerEvent("request_submitted", {
+    userId: user.id,
+    requestId: request.id,
+    metadata: { category_slug: category.slug, photo_count: photoPaths.length, is_urgent: isUrgent },
+  });
+
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const matchCount = await runMatchingForRequest({
+        requestId: request.id,
+        categoryId,
+        neighborhood,
+        desiredDate,
+        timeWindowStart,
+        timeWindowEnd,
+      });
+      if (matchCount > 0) {
+        await trackServerEvent("professional_matched", {
+          userId: user.id,
+          requestId: request.id,
+          metadata: { match_count: matchCount },
+        });
+      }
+    } catch (error) {
+      console.error("Matching inicial não executado:", error);
+    }
+  }
+
+  revalidatePath("/pedidos");
+  return {
+    requestId: request.id,
+    photoWarning:
+      rejectedPhotos > 0
+        ? `${rejectedPhotos} foto(s) não puderam ser anexadas (formato ou tamanho inválido). O pedido foi criado normalmente.`
+        : undefined,
+  };
+}
+
+/**
+ * Roda o matching determinístico (Fase 6) e grava os request_matches.
+ * Usa o cliente com service role apenas para LER professional_profiles de
+ * outros usuários (a policy de RLS restringe leitura dessa tabela ao próprio
+ * dono) — a gravação dos matches usa o cliente autenticado do próprio
+ * cliente, respeitando a policy de insert (dono do pedido).
+ */
+async function runMatchingForRequest(params: {
+  requestId: string;
+  categoryId: string;
+  neighborhood: string;
+  desiredDate: string;
+  timeWindowStart: string;
+  timeWindowEnd: string;
+}): Promise<number> {
+  const admin = createAdminClient();
+
+  // Feito em etapas (sem embeds aninhados) para não depender de metadados de
+  // relacionamento que só existem com um projeto Supabase real linkado.
+  const { data: categoryLinks } = await admin
+    .from("professional_categories")
+    .select("professional_id")
+    .eq("category_id", params.categoryId);
+
+  const candidateIds = (categoryLinks ?? []).map((link) => link.professional_id);
+  if (candidateIds.length === 0) return 0;
+
+  const [{ data: professionals }, { data: profiles }, { data: rules }, { data: exceptions }] = await Promise.all([
+    admin.from("professional_profiles").select("*").in("id", candidateIds).eq("is_active", true),
+    admin.from("profiles").select("id, is_suspended").in("id", candidateIds),
+    admin.from("availability_rules").select("*").in("professional_id", candidateIds),
+    admin.from("availability_exceptions").select("*").in("professional_id", candidateIds),
+  ]);
+
+  if (!professionals || professionals.length === 0) return 0;
+
+  const suspendedById = new Map((profiles ?? []).map((p) => [p.id, p.is_suspended]));
+  const rulesByProfessional = new Map<string, typeof rules>();
+  for (const rule of rules ?? []) {
+    const list = rulesByProfessional.get(rule.professional_id) ?? [];
+    list.push(rule);
+    rulesByProfessional.set(rule.professional_id, list);
+  }
+  const exceptionsByProfessional = new Map<string, typeof exceptions>();
+  for (const exception of exceptions ?? []) {
+    const list = exceptionsByProfessional.get(exception.professional_id) ?? [];
+    list.push(exception);
+    exceptionsByProfessional.set(exception.professional_id, list);
+  }
+
+  const candidateInputs: MatchCandidateInput[] = professionals.map((c) => ({
+    professionalId: c.id,
+    categoryIds: [params.categoryId],
+    serviceAreas: c.service_areas ?? [],
+    isActive: c.is_active,
+    isSuspended: Boolean(suspendedById.get(c.id)),
+    bio: c.bio ?? "",
+    averageRating: c.average_rating ?? 0,
+    reviewCount: c.review_count ?? 0,
+    responseRate: c.response_rate ?? 0,
+    lastAvailabilityUpdate: c.last_availability_update,
+    availabilityRules: rulesByProfessional.get(c.id) ?? [],
+    availabilityExceptions: exceptionsByProfessional.get(c.id) ?? [],
+  }));
+
+  const matches = matchProfessionals(
+    {
+      categoryId: params.categoryId,
+      neighborhood: params.neighborhood,
+      desiredDate: params.desiredDate,
+      timeWindowStart: params.timeWindowStart,
+      timeWindowEnd: params.timeWindowEnd,
+    },
+    candidateInputs,
+  ).slice(0, MAX_MATCHES_PER_REQUEST);
+
+  if (matches.length === 0) return 0;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("request_matches").insert(
+    matches.map((m) => ({
+      request_id: params.requestId,
+      professional_id: m.professionalId,
+    })),
+  );
+  if (error) {
+    throw new Error(`request_matches não gravados: ${error.message}`);
+  }
+  return matches.length;
+}
+
+export async function cancelServiceRequest(requestId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("not_authenticated");
+
+  await supabase
+    .from("service_requests")
+    .update({ status: "cancelled" })
+    .eq("id", requestId)
+    .eq("client_id", user.id);
+
+  revalidatePath(`/pedidos/${requestId}`);
+  revalidatePath("/pedidos");
+}
+
+export async function confirmMatch(params: {
+  requestId: string;
+  matchId: string;
+  professionalId: string;
+  scheduledDate: string;
+  timeWindowStart: string;
+  timeWindowEnd: string;
+  serviceAddress: string;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("not_authenticated");
+
+  // O trigger sync_request_status_on_appointment_insert já move o pedido para
+  // 'scheduled' e grava accepted_match_id; atualizar o pedido antes do insert
+  // deixava o pedido preso em 'accepted' quando o insert era recusado (0015).
+  const { error } = await supabase.from("appointments").insert({
+    request_id: params.requestId,
+    request_match_id: params.matchId,
+    client_id: user.id,
+    professional_id: params.professionalId,
+    scheduled_date: params.scheduledDate,
+    time_window_start: params.timeWindowStart,
+    time_window_end: params.timeWindowEnd,
+    service_address: params.serviceAddress,
+  });
+
+  if (error) {
+    throw new Error("Não foi possível confirmar o agendamento.");
+  }
+
+  await trackServerEvent("appointment_confirmed", { userId: user.id, requestId: params.requestId });
+
+  revalidatePath(`/pedidos/${params.requestId}`);
+  revalidatePath("/pedidos");
+}
+
+export async function createReview(params: {
+  appointmentId: string;
+  professionalId: string;
+  rating: number;
+  comment: string;
+}): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return actionError("Você precisa entrar.");
+
+  if (!Number.isInteger(params.rating) || params.rating < 1 || params.rating > 5) {
+    return actionError("Escolha uma nota de 1 a 5.");
+  }
+
+  const limit = await checkRateLimit("review_create", user.id);
+  if (!limit.ok) return actionError(limit.error, limit.retryAfterSeconds);
+
+  const { error } = await supabase.from("reviews").insert({
+    appointment_id: params.appointmentId,
+    client_id: user.id,
+    professional_id: params.professionalId,
+    rating: params.rating,
+    comment: params.comment.trim().slice(0, 1000),
+  });
+
+  if (error) {
+    return actionError(
+      error.code === "23505" ? "Você já avaliou este atendimento." : "Não foi possível registrar a avaliação.",
+    );
+  }
+
+  await trackServerEvent("review_submitted", { userId: user.id, metadata: { rating: params.rating } });
+
+  revalidatePath("/pedidos");
+  return actionOk();
+}
