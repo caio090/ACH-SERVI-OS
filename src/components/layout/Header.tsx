@@ -1,4 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
+import headerLogo from "../../../public/brand/logo-acho-servico-header.png";
 import { getCurrentUser } from "@/lib/auth";
 import { BRAND_NAME } from "@/lib/constants";
 import {
@@ -26,14 +28,20 @@ export async function Header() {
         <Link
           href="/"
           aria-label={`${BRAND_NAME} — Início`}
-          className="shrink-0 text-[0.95rem] font-black tracking-[-0.045em] text-neutral-950"
+          className="flex shrink-0 items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-action-500 focus-visible:ring-offset-2"
         >
-          ACHÔ<span className="text-accent-500">.</span>
+          <Image
+            src={headerLogo}
+            alt={BRAND_NAME}
+            priority
+            sizes="(min-width: 768px) 132px, 108px"
+            className="h-9 w-auto object-contain md:h-11"
+          />
         </Link>
 
         <Link
           href="/pedir"
-          className="ml-1 flex min-w-0 max-w-[9.5rem] items-center gap-1.5 rounded-lg px-1.5 py-2 text-neutral-600 hover:bg-neutral-100 sm:max-w-[13rem] md:order-3 md:ml-auto"
+          className="ml-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-1.5 py-2 text-neutral-600 hover:bg-neutral-100 sm:max-w-[13rem] md:order-3 md:ml-auto md:flex-none"
           aria-label={`Localização: ${location}`}
         >
           <Icon name="map-pin" className="h-4 w-4 shrink-0 text-action-700" />
@@ -44,7 +52,7 @@ export async function Header() {
           <Link href="/" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
             Início
           </Link>
-          <Link href="/pedir" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
+          <Link href="/buscar" className="rounded-lg px-3 py-2 hover:bg-neutral-100 hover:text-neutral-950">
             Buscar
           </Link>
           <Link
