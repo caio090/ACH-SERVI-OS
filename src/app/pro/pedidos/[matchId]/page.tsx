@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { REQUEST_MATCH_STATUS_LABELS, SERVICE_REQUEST_STATUS_LABELS } from "@/lib/constants";
 import { MatchResponseActions } from "./MatchResponseActions";
 import { RequestPhotos } from "@/components/requests/RequestPhotos";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 
 export default async function ProfessionalMatchPage({ params }: { params: { matchId: string } }) {
   const supabase = await createClient();
@@ -38,7 +39,8 @@ export default async function ProfessionalMatchPage({ params }: { params: { matc
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            {request.categories?.icon} {request.categories?.name}
+            {request.categories && <CategoryIcon category={request.categories} className="mr-1 inline h-4 w-4 align-[-3px]" />}
+            {request.categories?.name}
           </p>
           <h1 className="text-xl font-bold text-neutral-900">Pedido de {clientName}</h1>
         </div>

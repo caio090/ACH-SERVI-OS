@@ -9,7 +9,7 @@ export function RequestTimeline({ status }: { status: ServiceRequestStatus }) {
       <h2 id="request-timeline-heading" className="text-base font-bold text-neutral-950">Acompanhe seu pedido</h2>
       <ol className="mt-4 space-y-0">
         {items.map((item, index) => (
-          <li key={`${item.status}-${index}`} className="relative flex gap-3 pb-5 last:pb-0">
+          <li key={item.key} className="relative flex gap-3 pb-5 last:pb-0">
             {index < items.length - 1 && (
               <span
                 className={`absolute left-[0.6875rem] top-6 h-[calc(100%-1rem)] w-0.5 ${item.state === "complete" ? "bg-action-500" : "bg-neutral-200"}`}

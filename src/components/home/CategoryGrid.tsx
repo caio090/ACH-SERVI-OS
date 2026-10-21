@@ -1,21 +1,7 @@
 import Link from "next/link";
 import type { CategoryRow } from "@/lib/database.types";
-import { Icon, type IconName } from "@/components/ui/Icon";
-
-function getCategoryIcon(category: Pick<CategoryRow, "name" | "slug">): IconName {
-  const value = `${category.name} ${category.slug}`
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  if (value.includes("eletric")) return "bolt";
-  if (value.includes("encan") || value.includes("hidraul")) return "droplet";
-  if (value.includes("ar-condicionado") || value.includes("climat")) return "snowflake";
-  if (value.includes("pedreir") || value.includes("alvenaria")) return "brick";
-  if (value.includes("pint")) return "paint";
-  if (value.includes("montador") || value.includes("manutenc")) return "wrench";
-  return "briefcase";
-}
+import { Icon } from "@/components/ui/Icon";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 
 export function CategoryGrid({
   categories,

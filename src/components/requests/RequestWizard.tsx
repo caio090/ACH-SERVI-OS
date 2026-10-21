@@ -6,6 +6,7 @@ import type { CategoryRow } from "@/lib/database.types";
 import { createServiceRequest, type CreateRequestState } from "@/lib/actions/requests";
 import { Alert } from "@/components/ui/Alert";
 import { Icon } from "@/components/ui/Icon";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 import { compressImageForUpload } from "@/lib/imageCompression";
 import { trackClientEvent } from "@/lib/analytics.client";
 import { IMAGE_UPLOAD_RULES } from "@/lib/uploads";
@@ -124,12 +125,15 @@ export function RequestWizard({
           }
         : {}),
     });
+    // Categoria escolhida na busca/home: o cliente já começa descrevendo o problema.
+    if (!stored && selectedCategory && selectedCategory.slug === initialCategorySlug) {
+      setStep(2);
+    }
     setHydrated(true);
   }, [categories, initialCategorySlug, initialQuery]);
 
   useEffect(() => {
-    // Só na abertura do wizard: valores iniciais vindos da URL.
-    if (initialQuery) trackClientEvent("search_started", { has_query: true });
+    // Só na abertura do wizard. search_started é registrado na tela /buscar.
     trackClientEvent("request_started", { has_category: Boolean(initialCategorySlug), from_search: Boolean(initialQuery) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -198,6 +202,16 @@ export function RequestWizard({
     setStep(getNextRequestStep(step));
     setMessage(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelRequest() {
+    if (!window.confirm("Cancelar este pedido? O que você preencheu será descartado.")) return;
+    try {
+      sessionStorage.removeItem(REQUEST_DRAFT_STORAGE_KEY);
+    } catch {
+      // storage indisponível: nada a limpar
+    }
+    router.push("/");
   }
 
   function goBack() {
@@ -314,8 +328,8 @@ export function RequestWizard({
                     aria-pressed={selected}
                     onClick={() => selectCategory(category)}
                   >
-                    <span className="block text-2xl" aria-hidden="true">
-                      {category.icon || "🛠️"}
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-action-50 text-action-700" aria-hidden="true">
+                      <Icon name={getCategoryIcon(category)} className="h-5 w-5" />
                     </span>
                     <span className="mt-1 block text-sm font-bold leading-tight">{category.name}</span>
                   </button>
@@ -415,7 +429,7 @@ export function RequestWizard({
                 Onde será o serviço?
               </h1>
               <p className="mt-1 text-sm text-neutral-500">
-                O endereço completo será confirmado após o agendamento.
+                O endereço completo será confirmado no agendamento.
               </p>
             </div>
 
@@ -542,8 +556,9 @@ export function RequestWizard({
             </div>
 
             <ReviewBlock title="Serviço" onEdit={() => setStep(1)}>
-              <p className="font-semibold text-neutral-900">
-                {draft.categoryIcon} {draft.categoryName}
+              <p className="flex items-center gap-2 font-semibold text-neutral-900">
+                <Icon name={getCategoryIcon({ name: draft.categoryName, slug: draft.categorySlug })} className="h-4 w-4 text-action-700" />
+                {draft.categoryName}
               </p>
             </ReviewBlock>
 
@@ -558,7 +573,7 @@ export function RequestWizard({
               <p>
                 {draft.neighborhood}, {draft.city}
               </p>
-              <p className="mt-1 text-xs">O endereço completo será confirmado após o agendamento.</p>
+              <p className="mt-1 text-xs">O endereço completo será confirmado no agendamento.</p>
             </ReviewBlock>
 
             <ReviewBlock title="Data e período" onEdit={() => setStep(4)}>
@@ -583,7 +598,14 @@ export function RequestWizard({
           </div>
         )}
 
-        <div className="mt-6 flex gap-3 border-t border-neutral-200 pt-4">
+        <div className="mt-6 flex flex-wrap gap-3 border-t border-neutral-200 pt-4">
+          <button
+            type="button"
+            onClick={cancelRequest}
+            className="order-last min-h-11 w-full rounded-xl text-sm font-semibold text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 sm:order-first sm:w-auto sm:px-3"
+          >
+            Cancelar
+          </button>
           {step > 1 && (
             <button
               type="button"

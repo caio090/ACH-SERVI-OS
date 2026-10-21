@@ -7,11 +7,12 @@ import { Icon } from "@/components/ui/Icon";
 import { SERVICE_REQUEST_STATUS_LABELS } from "@/lib/constants";
 import type { CategoryRow, ServiceRequestRow } from "@/lib/database.types";
 import { getRequestStatusTone, isRequestTerminal } from "@/lib/request-status";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 import { hasPublicSupabaseConfig } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 type RequestWithCategory = ServiceRequestRow & {
-  categories: Pick<CategoryRow, "name" | "icon"> | null;
+  categories: Pick<CategoryRow, "name" | "slug"> | null;
 };
 
 function formatDate(value: string) {
@@ -37,8 +38,8 @@ function RequestCard({ request }: { request: RequestWithCategory }) {
       <Card className="transition-colors hover:border-action-300 hover:shadow-md">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-action-50 text-xl" aria-hidden="true">
-              {request.categories?.icon || "🛠️"}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-action-50 text-action-700" aria-hidden="true">
+              <Icon name={request.categories ? getCategoryIcon(request.categories) : "briefcase"} className="h-5 w-5" />
             </span>
             <div className="min-w-0">
               <p className="truncate font-bold text-neutral-900">{request.categories?.name ?? "Serviço"}</p>
@@ -80,7 +81,7 @@ function EmptyRequests() {
   );
 }
 
-export default async function MyRequestsPage() {
+export default async function MyRequestsPage({ searchParams }: { searchParams: { aba?: string } }) {
   if (!hasPublicSupabaseConfig()) {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-5 py-4">
@@ -125,16 +126,19 @@ export default async function MyRequestsPage() {
 
   const { data: requests, error } = await supabase
     .from("service_requests")
-    .select("*, categories(name, icon)")
+    .select("*, categories(name, slug)")
     .eq("client_id", user.id)
     .order("created_at", { ascending: false })
     .returns<RequestWithCategory[]>();
 
   const active = (requests ?? []).filter((request) => !isRequestTerminal(request.status));
+  // "Concluídos" reúne pedidos encerrados: concluído, cancelado ou expirado (o selo mostra qual).
   const finished = (requests ?? []).filter((request) => isRequestTerminal(request.status));
+  const tab: RequestsTab = searchParams.aba === "concluidos" ? "concluidos" : "andamento";
+  const shown = tab === "andamento" ? active : finished;
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6 py-4">
+    <div className="mx-auto flex max-w-2xl flex-col gap-5 py-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-action-700">Acompanhamento</p>
@@ -146,31 +150,51 @@ export default async function MyRequestsPage() {
       </div>
 
       {error && <Alert tone="error">Não foi possível carregar seus pedidos agora.</Alert>}
-      {!error && requests?.length === 0 && <EmptyRequests />}
 
-      {active.length > 0 && (
-        <section aria-labelledby="active-requests-heading">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 id="active-requests-heading" className="text-lg font-bold text-neutral-950">Em andamento</h2>
-            <span className="text-xs font-semibold text-neutral-500">{active.length}</span>
-          </div>
-          <div className="space-y-3">
-            {active.map((request) => <RequestCard key={request.id} request={request} />)}
-          </div>
-        </section>
-      )}
-
-      {finished.length > 0 && (
-        <section aria-labelledby="finished-requests-heading">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 id="finished-requests-heading" className="text-lg font-bold text-neutral-950">Finalizados</h2>
-            <span className="text-xs font-semibold text-neutral-500">{finished.length}</span>
-          </div>
-          <div className="space-y-3">
-            {finished.map((request) => <RequestCard key={request.id} request={request} />)}
-          </div>
-        </section>
+      {!error && requests?.length === 0 ? (
+        <EmptyRequests />
+      ) : (
+        <>
+          <RequestsTabs current={tab} activeCount={active.length} finishedCount={finished.length} />
+          {shown.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-neutral-300 bg-white p-5 text-center text-sm text-neutral-600">
+              {tab === "andamento" ? "Nenhum pedido em andamento agora." : "Nenhum pedido concluído ainda."}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {shown.map((request) => (
+                <RequestCard key={request.id} request={request} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+type RequestsTab = "andamento" | "concluidos";
+
+function RequestsTabs({ current, activeCount, finishedCount }: { current: RequestsTab; activeCount: number; finishedCount: number }) {
+  const tabs: Array<{ id: RequestsTab; label: string; count: number; href: string }> = [
+    { id: "andamento", label: "Em andamento", count: activeCount, href: "/pedidos" },
+    { id: "concluidos", label: "Concluídos", count: finishedCount, href: "/pedidos?aba=concluidos" },
+  ];
+  return (
+    <nav aria-label="Filtrar pedidos" className="grid grid-cols-2 gap-1 rounded-xl bg-neutral-100 p-1">
+      {tabs.map((item) => (
+        <Link
+          key={item.id}
+          href={item.href}
+          aria-current={item.id === current ? "page" : undefined}
+          className={`flex min-h-10 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold transition-colors ${
+            item.id === current ? "bg-white text-neutral-950 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
+          }`}
+        >
+          {item.label}
+          <span className="rounded-full bg-neutral-200 px-1.5 text-[11px] tabular-nums text-neutral-700">{item.count}</span>
+        </Link>
+      ))}
+    </nav>
   );
 }

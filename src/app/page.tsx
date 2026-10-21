@@ -79,7 +79,7 @@ export default async function HomePage() {
           </h1>
         </div>
 
-        <form action="/pedir" className="relative flex items-center" role="search">
+        <form action="/buscar" className="relative flex items-center" role="search">
           <Icon
             name="search"
             className="pointer-events-none absolute left-4 h-5 w-5 text-neutral-400"
@@ -111,7 +111,7 @@ export default async function HomePage() {
               <p className="mt-0.5 text-sm text-neutral-500">Encontre o serviço certo mais rápido.</p>
             </div>
             <Link
-              href="/pedir"
+              href="/buscar"
               className="inline-flex min-h-11 shrink-0 items-center gap-0.5 text-sm font-semibold text-action-700 hover:text-action-800"
             >
               Ver todos

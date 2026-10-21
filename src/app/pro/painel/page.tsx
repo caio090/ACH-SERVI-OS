@@ -5,10 +5,11 @@ import type { CategoryRow, RequestMatchRow, ServiceRequestRow } from "@/lib/data
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { REQUEST_MATCH_STATUS_LABELS } from "@/lib/constants";
 
 type MatchWithRequest = RequestMatchRow & {
-  service_requests: (ServiceRequestRow & { categories: Pick<CategoryRow, "name" | "icon"> | null }) | null;
+  service_requests: (ServiceRequestRow & { categories: Pick<CategoryRow, "name" | "slug"> | null }) | null;
 };
 
 export default async function ProfessionalDashboardPage() {
@@ -33,7 +34,7 @@ export default async function ProfessionalDashboardPage() {
 
   const { data: matches } = await supabase
     .from("request_matches")
-    .select("*, service_requests(*, categories(name, icon))")
+    .select("*, service_requests(*, categories(name, slug))")
     .eq("professional_id", user!.id)
     .order("created_at", { ascending: false })
     .returns<MatchWithRequest[]>();
@@ -81,8 +82,8 @@ function MatchCard({ match }: { match: MatchWithRequest }) {
       <Card className="flex flex-col gap-2 hover:border-brand-300 hover:shadow-md">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-xl" aria-hidden="true">
-              {request.categories?.icon ?? "🛠️"}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-action-50 text-action-700" aria-hidden="true">
+              {request.categories ? <CategoryIcon category={request.categories} className="h-5 w-5" /> : null}
             </span>
             <div>
               <p className="font-semibold text-neutral-900">{request.categories?.name ?? "Serviço"}</p>

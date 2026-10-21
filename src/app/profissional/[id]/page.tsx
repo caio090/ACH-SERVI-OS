@@ -10,6 +10,7 @@ import type {
   ReviewRow,
 } from "@/lib/database.types";
 import { Card } from "@/components/ui/Card";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { getNextAvailableSlot } from "@/lib/availability";
@@ -86,7 +87,8 @@ export default async function ProfessionalProfilePage({ params }: { params: { id
       <div className="flex flex-wrap gap-2">
         {categories.map((category) => (
           <Badge key={category.id} tone="brand">
-            {category.icon} {category.name}
+            <CategoryIcon category={category} className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+            {category.name}
           </Badge>
         ))}
       </div>

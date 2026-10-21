@@ -8,6 +8,7 @@ import { InputField, TextareaField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import type { CategoryRow } from "@/lib/database.types";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 
 const initialState: ProfessionalProfileState = {};
 
@@ -64,7 +65,8 @@ export function ProfessionalProfileForm({
                 defaultChecked={defaultCategoryIds.includes(category.id)}
                 className="h-4 w-4 rounded border-neutral-300 text-brand-600"
               />
-              {category.icon} {category.name}
+              <CategoryIcon category={category} className="h-4 w-4 text-action-700" />
+              {category.name}
             </label>
           ))}
         </div>
